@@ -91,12 +91,6 @@ def build_command():
     cmd.extend(["--learning_rate", str(CONFIG["learning_rate"])])
     cmd.extend(["--max_length", str(CONFIG["max_length"])])
 
-    # LoRA 参数
-    cmd.extend(["--sft_type", "lora"])
-    cmd.extend(["--lora_rank", str(CONFIG["lora_rank"])])
-    cmd.extend(["--lora_alpha", str(CONFIG["lora_alpha"])])
-    cmd.extend(["--lora_dropout", str(CONFIG["lora_dropout"])])
-
     # 日志和保存
     cmd.extend(["--logging_steps", str(CONFIG["logging_steps"])])
     cmd.extend(["--eval_steps", str(CONFIG["eval_steps"])])
