@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import time
+from datetime import datetime
 
 # ==============================================================================
 # 训练配置 - 直接修改这里的参数
@@ -29,16 +30,12 @@ CONFIG = {
     "per_device_eval_batch_size": 4,  # 评估批次大小
     "learning_rate": 1e-4,  # 学习率
 
-    # LoRA 参数
-    "lora_rank": 8,  # LoRA rank 值
-    "lora_alpha": 16,  # LoRA alpha 值
-    "lora_dropout": 0.05,  # LoRA dropout
-
     # 输出配置
     "output_dir": "./output",  # 输出目录
-    "logging_steps": 10,  # 日志打印步数
+    "log_dir": "./logs",  # 日志目录
+    "logging_steps": 1,  # 每批次都记录日志
     "eval_steps": 100,  # 评估步数
-    "save_steps": 100,  # 保存步数
+    "save_steps": 500,  # 保存步数
     "save_total_limit": 1,  # 最多保存的checkpoint数量
 
     # 其他配置
@@ -53,6 +50,9 @@ def setup_environment():
     if CONFIG["model_cache_dir"]:
         os.makedirs(CONFIG["model_cache_dir"], exist_ok=True)
         os.environ["MODELSCOPE_CACHE"] = CONFIG["model_cache_dir"]
+
+    # 创建日志目录
+    os.makedirs(CONFIG["log_dir"], exist_ok=True)
 
 
 def check_data():
@@ -89,15 +89,15 @@ def build_command():
     cmd.extend(["--per_device_train_batch_size", str(CONFIG["per_device_train_batch_size"])])
     cmd.extend(["--per_device_eval_batch_size", str(CONFIG["per_device_eval_batch_size"])])
     cmd.extend(["--learning_rate", str(CONFIG["learning_rate"])])
-    cmd.extend(["--max_length", str(CONFIG["max_length"])])
+    cmd.extend(["--max_length", str(CONFIG["max_length"]])
 
-    # 日志和保存
+    # 日志配置 - 关键：每批次都记录
     cmd.extend(["--logging_steps", str(CONFIG["logging_steps"])])
     cmd.extend(["--eval_steps", str(CONFIG["eval_steps"])])
     cmd.extend(["--save_steps", str(CONFIG["save_steps"])])
     cmd.extend(["--save_total_limit", str(CONFIG["save_total_limit"])])
 
-    # TensorBoard
+    # TensorBoard - 同时记录到 tensorboard 和 terminal
     cmd.extend(["--report_to", "tensorboard"])
 
     # 梯度检查点
@@ -108,6 +108,13 @@ def build_command():
     cmd.extend(["--seed", str(CONFIG["seed"])])
 
     return cmd
+
+
+def get_log_file():
+    """获取日志文件路径"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(CONFIG["log_dir"], f"training_{timestamp}.log")
+    return log_file
 
 
 def print_config():
@@ -148,6 +155,11 @@ def main():
         pass
     print()
 
+    # 获取日志文件
+    log_file = get_log_file()
+    print(f"日志文件: {log_file}")
+    print()
+
     # 构建命令
     cmd = build_command()
 
@@ -161,6 +173,16 @@ def main():
     print("-" * 60)
 
     start_time = time.time()
+    step_count = 0
+    last_loss = "N/A"
+
+    # 打开日志文件
+    log_f = open(log_file, 'w', encoding='utf-8')
+    log_f.write("=" * 60 + "\n")
+    log_f.write(f"训练开始时间: {datetime.now()}\n")
+    log_f.write(f"命令: swift {' '.join(cmd[1:])}\n")
+    log_f.write("=" * 60 + "\n\n")
+    log_f.flush()
 
     try:
         # 使用 subprocess 运行 swift 命令
@@ -172,35 +194,55 @@ def main():
             bufsize=1
         )
 
-        # 实时打印输出
+        # 实时打印并记录日志
         for line in process.stdout:
             print(line, end='')
+            log_f.write(line)
+            log_f.flush()
+
+            # 解析 loss 并更新
+            if "'loss':" in line and "'epoch':" in line:
+                step_count += 1
 
         # 等待进程结束
         process.wait()
 
         elapsed = int(time.time() - start_time)
 
+        # 写入结束信息
+        log_f.write("\n" + "=" * 60 + "\n")
+        log_f.write(f"训练结束时间: {datetime.now()}\n")
+        log_f.write(f"总耗时: {elapsed // 60} 分钟 {elapsed % 60} 秒\n")
+        log_f.write(f"退出码: {process.returncode}\n")
+        log_f.write("=" * 60 + "\n")
+        log_f.close()
+
         if process.returncode == 0:
             print("\n" + "=" * 60)
             print("训练完成!")
             print(f"总耗时: {elapsed // 60} 分钟 {elapsed % 60} 秒")
             print(f"模型保存位置: {CONFIG['output_dir']}")
+            print(f"日志文件: {log_file}")
             print("=" * 60)
             print("\n查看训练曲线:")
             print(f"  tensorboard --logdir {CONFIG['output_dir']}")
         else:
             print("\n" + "=" * 60)
             print(f"训练失败，退出码: {process.returncode}")
+            print(f"日志文件: {log_file}")
             print("=" * 60)
             sys.exit(1)
 
     except KeyboardInterrupt:
         print("\n\n训练被用户中断")
+        log_f.write("\n训练被用户中断\n")
+        log_f.close()
         process.terminate()
         sys.exit(1)
     except Exception as e:
         print(f"\n训练出错: {e}")
+        log_f.write(f"\n训练出错: {e}\n")
+        log_f.close()
         import traceback
         traceback.print_exc()
         sys.exit(1)
