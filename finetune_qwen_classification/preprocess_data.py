@@ -51,53 +51,44 @@ def parse_jd_dataset(data: List[Dict]) -> List[Dict]:
     """
     解析京东评论数据集
     根据实际数据结构调整解析逻辑
+
+    数据格式: {'sentence': '评论文本', 'label': 1.0, 'dataset': 'jd'}
     """
     processed_data = []
 
     for item in data:
-        # 尝试多种可能的字段名
-        text = None
-        label = None
+        # 京东数据集的字段名
+        text = item.get('sentence') or item.get('review') or item.get('text') or \
+               item.get('content') or item.get('comment')
 
-        # 常见的评论字段
-        text_candidates = ['review', 'text', 'content', 'comment', '整体评论', '评价内容']
-        for field in text_candidates:
-            if field in item and item[field]:
-                text = item[field]
-                break
+        # 处理 label 字段
+        raw_label = item.get('label')
+        if raw_label is None:
+            continue
 
-        # 常见的标签字段
-        label_candidates = ['label', 'sentiment', '情感', 'rating', 'star']
-        for field in label_candidates:
-            if field in item:
-                label = item[field]
-                break
-
-        # 如果没有找到合适的标签，尝试从评论内容推断
-        if label is None and text:
-            # 简单规则：包含负面词汇 -> 负面
-            negative_words = ['差', '坏', '不好', '失望', '退货', '退款', '烂', '垃圾', '坑', '后悔']
-            positive_words = ['好', '棒', '赞', '喜欢', '满意', '推荐', '优秀', '超值', '值得']
-
-            text_lower = text.lower()
-            neg_count = sum(1 for w in negative_words if w in text_lower)
-            pos_count = sum(1 for w in positive_words if w in text_lower)
-
-            if neg_count > pos_count:
-                label = 0  # 负面
-            elif pos_count > neg_count:
+        # 转换为整数标签 (1=正面, 0=负面, 可能有2=中性)
+        # 京东数据集: 1=正面, 0=负面
+        try:
+            label_float = float(raw_label)
+            # 二分类: 0=负面, 1=正面
+            # 映射为: 0=负面, 1=中性, 2=正面 (ms-swift 三分类)
+            if label_float == 1.0:
                 label = 2  # 正面
+            elif label_float == 0.0:
+                label = 0  # 负面
             else:
                 label = 1  # 中性
+        except (ValueError, TypeError):
+            label = 1  # 默认中性
 
-        if text and label is not None:
-            cleaned_text = clean_text(text)
+        if text and isinstance(text, str) and text.strip():
+            cleaned_text = clean_text(str(text))
             if cleaned_text:
                 processed_data.append({
                     "messages": [
                         {"role": "user", "content": f"请判断这条电商评论的情感类别（0=负面，1=中性，2=正面）：{cleaned_text}"}
                     ],
-                    "label": int(label) if isinstance(label, (int, str)) else 1
+                    "label": label
                 })
 
     return processed_data
@@ -108,9 +99,9 @@ def load_raw_data() -> List[Dict]:
     尝试从多个可能的位置加载数据
     """
     possible_paths = [
-        os.path.join(DATA_DIR, "DAMO_NLP", "jd", "default", "train.json"),
+        os.path.join(DATA_DIR, "jd_reviews.json"),  # download_data.py 保存的文件
+        os.path.join(DATA_DIR, "mock_data.json"),
         os.path.join(DATA_DIR, "train.json"),
-        os.path.join(DATA_DIR, "jd_train.json"),
     ]
 
     for path in possible_paths:

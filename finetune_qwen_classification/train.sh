@@ -95,11 +95,11 @@ fi
 
 SWIFT_CMD="swift sft"
 
-# 模型参数
+# 模型参数 (ms-swift 使用 --model)
 if [ -n "${MODEL_PATH}" ]; then
-    SWIFT_CMD="${SWIFT_CMD} --model_type ${MODEL_PATH}"
+    SWIFT_CMD="${SWIFT_CMD} --model ${MODEL_PATH}"
 else
-    SWIFT_CMD="${SWIFT_CMD} --model_type ${MODEL_NAME}"
+    SWIFT_CMD="${SWIFT_CMD} --model ${MODEL_NAME}"
 fi
 
 # 数据集参数 (支持本地数据集)
