@@ -284,7 +284,6 @@ def main():
         "num_labels": CONFIG["num_labels"],
         "id2label": CONFIG["id2label"],
         "label2id": CONFIG["label2id"],
-        "torch_dtype": torch.float16,  # 使用 FP16
     }
 
     if CONFIG["use_huggingface_hub"]:
@@ -301,7 +300,6 @@ def main():
             num_labels=CONFIG["num_labels"],
             id2label=CONFIG["id2label"],
             label2id=CONFIG["label2id"],
-            torch_dtype=torch.float16,  # 使用 FP16
         )
 
     # 设置 pad_token_id
@@ -382,8 +380,8 @@ def main():
         load_best_model_at_end=CONFIG["load_best_model_at_end"],
         metric_for_best_model=CONFIG["metric_for_best_model"],
         greater_is_better=CONFIG["greater_is_better"],
-        fp16=True,  # 启用 FP16
-        bf16=False,  # 强制禁用 BF16
+        fp16=False,  # 禁用混合精度，避免兼容性问题
+        bf16=False,
         gradient_checkpointing=CONFIG["gradient_checkpointing"],
         seed=CONFIG["seed"],
         report_to=CONFIG["report_to"],
