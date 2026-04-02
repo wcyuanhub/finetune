@@ -15,236 +15,233 @@ from datetime import datetime
 # ==============================================================================
 
 CONFIG = {
-    # 模型配置
-    "model_name": "Qwen/Qwen2.5-1.5B-Instruct",  # ModelScope 模型ID
-    "model_cache_dir": "./model_cache",  # 模型缓存目录
-
-    # 数据配置
-    "train_data": "./data/processed/train.jsonl",  # 训练数据路径
-    "val_data": "./data/processed/val.jsonl",  # 验证数据路径
-    "max_length": 256,  # 最大序列长度
-
-    # 训练参数
-    "num_train_epochs": 1,  # 训练轮数 (加快速度)
-    "per_device_train_batch_size": 8,  # 训练批次大小 (增大加速)
-    "per_device_eval_batch_size": 8,  # 评估批次大小
-    "learning_rate": 1e-4,  # 学习率
-
-    # 输出配置
-    "output_dir": "./output",  # 输出目录
-    "log_dir": "./logs",  # 日志目录
-    "logging_steps": 1,  # 每批次都记录日志
-    "eval_steps": 500,  # 评估步数 (减少加速)
-    "save_steps": 1000,  # 保存步数
-    "save_total_limit": 1,  # 最多保存的checkpoint数量
-
-    # 其他配置
-    "seed": 42,  # 随机种子
-    "gradient_checkpointing": True,  # 梯度检查点
+    "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+    "model_cache_dir": "./model_cache",
+    "train_data": "./data/processed/train.jsonl",
+    "val_data": "./data/processed/val.jsonl",
+    "max_length": 256,
+    "num_train_epochs": 1,
+    "per_device_train_batch_size": 8,
+    "per_device_eval_batch_size": 8,
+    "learning_rate": 1e-4,
+    "output_dir": "./output",
+    "log_dir": "./logs",
+    "logging_steps": 10,
+    "eval_steps": 500,
+    "save_steps": 1000,
+    "save_total_limit": 1,
+    "seed": 42,
+    "gradient_checkpointing": True,
 }
 
 
 def setup_environment():
-    """设置环境"""
-    # 设置模型缓存目录
     if CONFIG["model_cache_dir"]:
         os.makedirs(CONFIG["model_cache_dir"], exist_ok=True)
         os.environ["MODELSCOPE_CACHE"] = CONFIG["model_cache_dir"]
-
-    # 创建日志目录
     os.makedirs(CONFIG["log_dir"], exist_ok=True)
+    os.makedirs(CONFIG["output_dir"], exist_ok=True)
 
 
 def check_data():
-    """检查数据文件"""
     train_path = CONFIG["train_data"]
     if not os.path.exists(train_path):
-        print(f"错误: 训练数据不存在: {train_path}")
-        print("\n请先运行以下命令下载和预处理数据:")
-        print("  python download_data.py")
-        print("  python preprocess_data.py")
+        print(f"[ERROR] 训练数据不存在: {train_path}")
+        print(f"[INFO] 请运行: python download_data.py && python preprocess_data.py")
         sys.exit(1)
-
-    print(f"训练数据: {train_path}")
-    if CONFIG["val_data"] and os.path.exists(CONFIG["val_data"]):
-        print(f"验证数据: {CONFIG['val_data']}")
-    print()
 
 
 def build_command():
-    """构建 swift sft 命令"""
     cmd = ["swift", "sft"]
-
-    # 必需参数
     cmd.extend(["--model", CONFIG["model_name"]])
     cmd.extend(["--dataset", CONFIG["train_data"]])
     cmd.extend(["--output_dir", CONFIG["output_dir"]])
 
-    # 添加验证集
     if CONFIG["val_data"] and os.path.exists(CONFIG["val_data"]):
         cmd[-1] = CONFIG["train_data"] + ":" + CONFIG["val_data"]
 
-    # 训练参数
     cmd.extend(["--num_train_epochs", str(CONFIG["num_train_epochs"])])
     cmd.extend(["--per_device_train_batch_size", str(CONFIG["per_device_train_batch_size"])])
     cmd.extend(["--per_device_eval_batch_size", str(CONFIG["per_device_eval_batch_size"])])
     cmd.extend(["--learning_rate", str(CONFIG["learning_rate"])])
     cmd.extend(["--max_length", str(CONFIG["max_length"])])
-
-    # 日志配置 - 关键：每批次都记录
     cmd.extend(["--logging_steps", str(CONFIG["logging_steps"])])
     cmd.extend(["--eval_steps", str(CONFIG["eval_steps"])])
     cmd.extend(["--save_steps", str(CONFIG["save_steps"])])
     cmd.extend(["--save_total_limit", str(CONFIG["save_total_limit"])])
-
-    # TensorBoard - 同时记录到 tensorboard 和 terminal
     cmd.extend(["--report_to", "tensorboard"])
 
-    # 梯度检查点
     if CONFIG["gradient_checkpointing"]:
         cmd.append("--gradient_checkpointing")
 
-    # 随机种子
     cmd.extend(["--seed", str(CONFIG["seed"])])
-
     return cmd
 
 
-def get_log_file():
-    """获取日志文件路径"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(CONFIG["log_dir"], f"training_{timestamp}.log")
-    return log_file
+def parse_metrics(line):
+    """解析日志行，提取关键指标"""
+    info = {}
 
+    if "'loss':" in line:
+        try:
+            start = line.find("'loss':") + 8
+            end = line.find(",", start)
+            info['loss'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
 
-def print_config():
-    """打印配置信息"""
-    print("=" * 60)
-    print("训练配置:")
-    print("=" * 60)
-    for key, value in CONFIG.items():
-        print(f"  {key}: {value}")
-    print("=" * 60)
-    print()
+    if "'grad_norm':" in line:
+        try:
+            start = line.find("'grad_norm':") + 13
+            end = line.find(",", start)
+            info['grad_norm'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    if "'learning_rate':" in line:
+        try:
+            start = line.find("'learning_rate':") + 16
+            end = line.find(",", start)
+            lr = line[start:end].strip().strip("'\"")
+            info['lr'] = f"{float(lr):.2e}" if lr else "N/A"
+        except:
+            pass
+
+    if "'epoch':" in line:
+        try:
+            start = line.find("'epoch':") + 9
+            end = line.find(",", start)
+            info['epoch'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    if "'global_step/max_steps':" in line:
+        try:
+            start = line.find("'global_step/max_steps':") + 24
+            end = line.find(",", start)
+            info['step'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    if "'elapsed_time':" in line:
+        try:
+            start = line.find("'elapsed_time':") + 16
+            end = line.find(",", start)
+            info['elapsed'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    if "'remaining_time':" in line:
+        try:
+            start = line.find("'remaining_time':") + 17
+            end = line.find(",", start)
+            info['remaining'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    if "'memory(GiB)':" in line:
+        try:
+            start = line.find("'memory(GiB)':") + 14
+            end = line.find(",", start)
+            info['memory'] = line[start:end].strip().strip("'\"")
+        except:
+            pass
+
+    return info
 
 
 def main():
-    """主函数"""
-    print("\n" + "=" * 60)
-    print("Qwen2.5-1.5B 电商评论文本分类微调训练")
-    print("=" * 60 + "\n")
+    print("")
+    print("=" * 60)
+    print("       Qwen2.5-1.5B 文本分类微调训练")
+    print("=" * 60)
+    print("")
 
-    # 设置环境
     setup_environment()
-
-    # 检查数据
     check_data()
 
-    # 打印配置
-    print_config()
+    print("┌─ 配置 ─────────────────────────────────────────────┐")
+    print(f"│  模型: {CONFIG['model_name']}")
+    print(f"│  Epochs: {CONFIG['num_train_epochs']} | Batch: {CONFIG['per_device_train_batch_size']} | LR: {CONFIG['learning_rate']}")
+    print(f"│  Max Length: {CONFIG['max_length']}")
+    print(f"│  输出: {CONFIG['output_dir']}")
+    print("└──────────────────────────────────────────────────┘")
+    print("")
 
-    # 检测 GPU
     try:
         import torch
         if torch.cuda.is_available():
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
-            print(f"显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-        else:
-            print("GPU: 未检测到 (使用 CPU)")
+            print(f"[GPU] {torch.cuda.get_device_name(0)} | {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GiB")
     except:
         pass
-    print()
 
-    # 获取日志文件
-    log_file = get_log_file()
-    print(f"日志文件: {log_file}")
-    print()
+    print("")
+    print("=" * 60)
+    print("[START] 开始训练...")
+    print("=" * 60)
+    print("")
 
-    # 构建命令
     cmd = build_command()
-
-    # 打印训练命令
-    print("训练命令:")
-    print("swift " + " ".join(cmd[1:]))
-    print()
-
-    # 开始训练
-    print("开始训练...")
-    print("-" * 60)
+    print(f"[CMD] swift {' '.join(cmd[1:])}")
+    print("")
 
     start_time = time.time()
-    step_count = 0
-    last_loss = "N/A"
-
-    # 打开日志文件
+    log_file = os.path.join(CONFIG["log_dir"], f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     log_f = open(log_file, 'w', encoding='utf-8')
-    log_f.write("=" * 60 + "\n")
-    log_f.write(f"训练开始时间: {datetime.now()}\n")
-    log_f.write(f"命令: swift {' '.join(cmd[1:])}\n")
-    log_f.write("=" * 60 + "\n\n")
-    log_f.flush()
+    log_f.write(f"训练开始: {datetime.now()}\n\n")
 
     try:
-        # 使用 subprocess 运行 swift 命令
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
-        # 实时打印并记录日志
         for line in process.stdout:
-            print(line, end='')
             log_f.write(line)
             log_f.flush()
 
-            # 解析 loss 并更新
-            if "'loss':" in line and "'epoch':" in line:
-                step_count += 1
+            info = parse_metrics(line)
 
-        # 等待进程结束
+            if info:
+                elapsed = int(time.time() - start_time)
+                parts = []
+
+                if info.get('step'):
+                    parts.append(f"Step {info['step']}")
+                if info.get('loss'):
+                    parts.append(f"Loss {float(info['loss']):.4f}")
+                if info.get('lr'):
+                    parts.append(f"LR {info['lr']}")
+                if info.get('remaining'):
+                    parts.append(f"Left {info['remaining']}")
+                if info.get('memory'):
+                    parts.append(f"Mem {info['memory']}GiB")
+
+                print(f"\r[{elapsed//60:02d}:{elapsed%60:02d}] " + " | ".join(parts), end='', flush=True)
+
+            if "INFO" in line or "ERROR" in line or "Traceback" in line:
+                print(f"\n{line}", end='')
+
         process.wait()
+        log_f.close()
 
         elapsed = int(time.time() - start_time)
 
-        # 写入结束信息
-        log_f.write("\n" + "=" * 60 + "\n")
-        log_f.write(f"训练结束时间: {datetime.now()}\n")
-        log_f.write(f"总耗时: {elapsed // 60} 分钟 {elapsed % 60} 秒\n")
-        log_f.write(f"退出码: {process.returncode}\n")
-        log_f.write("=" * 60 + "\n")
-        log_f.close()
-
+        print("\n\n" + "=" * 60)
         if process.returncode == 0:
-            print("\n" + "=" * 60)
-            print("训练完成!")
-            print(f"总耗时: {elapsed // 60} 分钟 {elapsed % 60} 秒")
-            print(f"模型保存位置: {CONFIG['output_dir']}")
-            print(f"日志文件: {log_file}")
-            print("=" * 60)
-            print("\n查看训练曲线:")
-            print(f"  tensorboard --logdir {CONFIG['output_dir']}")
+            print("[SUCCESS] 训练完成!")
+            print(f"[TIME] 耗时: {elapsed // 60} 分 {elapsed % 60} 秒")
+            print(f"[SAVE] 模型: {CONFIG['output_dir']}")
+            print(f"[LOG] 日志: {log_file}")
         else:
-            print("\n" + "=" * 60)
-            print(f"训练失败，退出码: {process.returncode}")
-            print(f"日志文件: {log_file}")
-            print("=" * 60)
-            sys.exit(1)
+            print(f"[ERROR] 训练失败: {process.returncode}")
+        print("=" * 60)
+        print("\n[TIP] TensorBoard: tensorboard --logdir output --port 6006")
 
     except KeyboardInterrupt:
-        print("\n\n训练被用户中断")
-        log_f.write("\n训练被用户中断\n")
+        print("\n\n[STOP] 训练已中断")
         log_f.close()
         process.terminate()
-        sys.exit(1)
     except Exception as e:
-        print(f"\n训练出错: {e}")
-        log_f.write(f"\n训练出错: {e}\n")
+        print(f"\n[ERROR] {e}")
         log_f.close()
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
 
 
