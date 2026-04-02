@@ -50,9 +50,9 @@ CONFIG = {
 
     # 训练配置
     "num_train_epochs": 3,
-    "per_device_train_batch_size": 4,
+    "per_device_train_batch_size": 8,     # 增大 batch
     "per_device_eval_batch_size": 8,
-    "gradient_accumulation_steps": 2,  # 梯度累积步数
+    "gradient_accumulation_steps": 1,     # 关闭累积
     "learning_rate": 2e-4,
     "warmup_ratio": 0.1,  # 预热比例
     "weight_decay": 0.01,
@@ -74,8 +74,8 @@ CONFIG = {
     "save_only_model": False,
 
     # 优化配置
-    "gradient_checkpointing": True,
-    "fp16": True,  # 混合精度训练
+    "gradient_checkpointing": False,      # 关闭检查点（加速）
+    "fp16": True,                         # 混合精度（加速）
     "bf16": False,  # BF16 训练（如果GPU支持）
     "group_by_length": False,
 
@@ -376,8 +376,8 @@ def main():
         load_best_model_at_end=CONFIG["load_best_model_at_end"],
         metric_for_best_model=CONFIG["metric_for_best_model"],
         greater_is_better=CONFIG["greater_is_better"],
-        fp16=False,  # 禁用混合精度，避免兼容性问题
-        bf16=False,
+        fp16=CONFIG["fp16"],  # 使用配置值
+        bf16=CONFIG["bf16"],
         gradient_checkpointing=CONFIG["gradient_checkpointing"],
         seed=CONFIG["seed"],
         report_to=CONFIG["report_to"],
