@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
 数据预处理脚本
-将原始电商评论数据转换为 ms-swift 所需的格式
+将原始电商评论数据转换为训练所需的格式
 
-ms-swift seq_cls 任务格式:
-{"text": "评论文本", "label": 0}
+格式: {"text": "评论文本", "label": 0}
 """
 
 import json
@@ -35,7 +34,6 @@ def clean_text(text: str) -> str:
 def parse_jd_dataset(data: List[Dict]) -> List[Dict]:
     """
     解析京东评论数据集
-    使用 ms-swift seq_cls 格式
     """
     processed_data = []
 
@@ -60,7 +58,6 @@ def parse_jd_dataset(data: List[Dict]) -> List[Dict]:
 
         cleaned_text = clean_text(str(text))
         if cleaned_text:
-            # ms-swift seq_cls 格式: 直接使用 text 和 label
             processed_data.append({
                 "text": cleaned_text,
                 "label": label
