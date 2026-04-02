@@ -89,7 +89,7 @@ def build_command():
     cmd.extend(["--per_device_train_batch_size", str(CONFIG["per_device_train_batch_size"])])
     cmd.extend(["--per_device_eval_batch_size", str(CONFIG["per_device_eval_batch_size"])])
     cmd.extend(["--learning_rate", str(CONFIG["learning_rate"])])
-    cmd.extend(["--max_length", str(CONFIG["max_length"]])
+    cmd.extend(["--max_length", str(CONFIG["max_length"])])
 
     # 日志配置 - 关键：每批次都记录
     cmd.extend(["--logging_steps", str(CONFIG["logging_steps"])])
