@@ -3,17 +3,14 @@
 数据预处理脚本
 将原始电商评论数据转换为 ms-swift 所需的格式
 
-ms-swift 文本分类数据格式:
-{
-    "messages": [{"role": "user", "content": "评论文本"}],
-    "label": 0  # 0=负面, 1=中性, 2=正面
-}
+ms-swift seq_cls 任务格式:
+{"text": "评论文本", "label": 0}
 """
 
 import json
 import os
 import re
-from typing import Dict, List, Any
+from typing import Dict, List
 from collections import Counter
 
 # 项目路径配置
@@ -21,57 +18,37 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
 
+
 def clean_text(text: str) -> str:
-    """
-    清洗文本数据
-    - 去除多余空白字符
-    - 去除特殊符号
-    - 限制文本长度
-    """
+    """清洗文本数据"""
     if not text:
         return ""
-
-    # 去除多余空白
     text = re.sub(r'\s+', ' ', text)
-
-    # 去除常见HTML标签
     text = re.sub(r'<[^>]+>', '', text)
-
-    # 去除URL
     text = re.sub(r'http[s]?://\S+', '', text)
-
-    # 限制最大长度 (Qwen2.5-1.5B 推荐 512 tokens ~= 1000 字符)
-    max_length = 1000
+    max_length = 500
     if len(text) > max_length:
         text = text[:max_length]
-
     return text.strip()
+
 
 def parse_jd_dataset(data: List[Dict]) -> List[Dict]:
     """
     解析京东评论数据集
-    根据实际数据结构调整解析逻辑
-
-    数据格式: {'sentence': '评论文本', 'label': 1.0, 'dataset': 'jd'}
+    使用 ms-swift seq_cls 格式
     """
     processed_data = []
 
     for item in data:
-        # 京东数据集的字段名
-        text = item.get('sentence') or item.get('review') or item.get('text') or \
-               item.get('content') or item.get('comment')
-
-        # 处理 label 字段
+        text = item.get('sentence') or item.get('review') or item.get('text')
         raw_label = item.get('label')
-        if raw_label is None:
+
+        if text is None or raw_label is None:
             continue
 
-        # 转换为整数标签 (1=正面, 0=负面, 可能有2=中性)
-        # 京东数据集: 1=正面, 0=负面
+        # 转换标签: 1.0=正面(2), 0.0=负面(0)
         try:
             label_float = float(raw_label)
-            # 二分类: 0=负面, 1=正面
-            # 映射为: 0=负面, 1=中性, 2=正面 (ms-swift 三分类)
             if label_float == 1.0:
                 label = 2  # 正面
             elif label_float == 0.0:
@@ -79,29 +56,24 @@ def parse_jd_dataset(data: List[Dict]) -> List[Dict]:
             else:
                 label = 1  # 中性
         except (ValueError, TypeError):
-            label = 1  # 默认中性
+            continue
 
-        if text and isinstance(text, str) and text.strip():
-            cleaned_text = clean_text(str(text))
-            if cleaned_text:
-                processed_data.append({
-                    "messages": [
-                        {"role": "user", "content": f"请判断这条电商评论的情感类别（0=负面，1=中性，2=正面）：{cleaned_text}"}
-                    ],
-                    "label": label
-                })
+        cleaned_text = clean_text(str(text))
+        if cleaned_text:
+            # ms-swift seq_cls 格式: 直接使用 text 和 label
+            processed_data.append({
+                "text": cleaned_text,
+                "label": label
+            })
 
     return processed_data
 
+
 def load_raw_data() -> List[Dict]:
-    """
-    加载原始数据
-    尝试从多个可能的位置加载数据
-    """
+    """加载原始数据"""
     possible_paths = [
-        os.path.join(DATA_DIR, "jd_reviews.json"),  # download_data.py 保存的文件
+        os.path.join(DATA_DIR, "jd_reviews.json"),
         os.path.join(DATA_DIR, "mock_data.json"),
-        os.path.join(DATA_DIR, "train.json"),
     ]
 
     for path in possible_paths:
@@ -110,15 +82,12 @@ def load_raw_data() -> List[Dict]:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
 
-    # 如果没有找到文件，生成模拟数据进行测试
-    print("未找到原始数据文件，生成模拟数据进行测试...")
+    print("未找到原始数据文件，生成模拟数据...")
     return generate_mock_data()
 
+
 def generate_mock_data() -> List[Dict]:
-    """
-    生成模拟电商评论数据用于测试流程
-    实际使用时应该用真实数据
-    """
+    """生成模拟数据"""
     mock_data = [
         {"text": "这个商品质量很好，物流很快，很满意！", "label": 2},
         {"text": "东西不错，性价比很高，值得购买。", "label": 2},
@@ -132,46 +101,37 @@ def generate_mock_data() -> List[Dict]:
         {"text": "包装破损，产品有划痕，不推荐购买。", "label": 0},
     ]
 
-    # 将模拟数据保存到文件
     mock_file = os.path.join(DATA_DIR, "mock_data.json")
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(mock_file, 'w', encoding='utf-8') as f:
-        json.dump(mock_data, f, ensure_ascii=False, indent=2)
+        json.dump(mock_data, f, ensure_ascii=False)
 
     return mock_data
 
+
 def split_dataset(data: List[Dict], train_ratio: float = 0.8) -> tuple:
-    """
-    划分训练集和验证集
-    """
+    """划分数据集"""
     import random
     random.seed(42)
     random.shuffle(data)
-
     split_idx = int(len(data) * train_ratio)
-    train_data = data[:split_idx]
-    val_data = data[split_idx:]
+    return data[:split_idx], data[split_idx:]
 
-    return train_data, val_data
 
 def save_dataset(data: List[Dict], output_file: str):
-    """
-    保存处理后的数据集为 JSONL 格式
-    """
+    """保存为 JSONL 格式"""
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
     with open(output_file, 'w', encoding='utf-8') as f:
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + '\n')
-
     print(f"已保存 {len(data)} 条数据到: {output_file}")
+
 
 def main():
     print("=" * 50)
     print("开始预处理数据...")
     print("=" * 50)
 
-    # 创建输出目录
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # 加载原始数据
@@ -182,7 +142,7 @@ def main():
     processed_data = parse_jd_dataset(raw_data)
     print(f"处理后数据: {len(processed_data)} 条")
 
-    # 统计标签分布
+    # 标签分布
     labels = [item['label'] for item in processed_data]
     label_counts = Counter(labels)
     print(f"\n标签分布:")
@@ -193,30 +153,13 @@ def main():
     # 划分数据集
     train_data, val_data = split_dataset(processed_data)
 
-    # 保存数据
-    train_file = os.path.join(OUTPUT_DIR, "train.jsonl")
-    val_file = os.path.join(OUTPUT_DIR, "val.jsonl")
+    # 保存
+    save_dataset(train_data, os.path.join(OUTPUT_DIR, "train.jsonl"))
+    save_dataset(val_data, os.path.join(OUTPUT_DIR, "val.jsonl"))
 
-    save_dataset(train_data, train_file)
-    save_dataset(val_data, val_file)
+    print(f"\n数据预处理完成!")
+    print(f"下一步: python train.py")
 
-    # 保存数据集配置信息
-    config_file = os.path.join(OUTPUT_DIR, "dataset_info.json")
-    config = {
-        "task_type": "seq_cls",
-        "num_labels": 3,
-        "labels": ["负面", "中性", "正面"],
-        "train_samples": len(train_data),
-        "val_samples": len(val_data),
-        "max_length": 1000
-    }
-
-    with open(config_file, 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
-
-    print(f"\n数据集配置已保存到: {config_file}")
-    print("\n数据预处理完成!")
-    print(f"\n接下来可以运行 train.sh 开始训练")
 
 if __name__ == "__main__":
     main()

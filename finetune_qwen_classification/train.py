@@ -22,20 +22,20 @@ CONFIG = {
     # 数据配置
     "train_data": "./data/processed/train.jsonl",  # 训练数据路径
     "val_data": "./data/processed/val.jsonl",  # 验证数据路径
-    "max_length": 512,  # 最大序列长度
+    "max_length": 256,  # 最大序列长度
 
     # 训练参数
-    "num_train_epochs": 3,  # 训练轮数
-    "per_device_train_batch_size": 4,  # 训练批次大小 (24GB显存建议4-8)
-    "per_device_eval_batch_size": 4,  # 评估批次大小
+    "num_train_epochs": 1,  # 训练轮数 (加快速度)
+    "per_device_train_batch_size": 8,  # 训练批次大小 (增大加速)
+    "per_device_eval_batch_size": 8,  # 评估批次大小
     "learning_rate": 1e-4,  # 学习率
 
     # 输出配置
     "output_dir": "./output",  # 输出目录
     "log_dir": "./logs",  # 日志目录
     "logging_steps": 1,  # 每批次都记录日志
-    "eval_steps": 100,  # 评估步数
-    "save_steps": 500,  # 保存步数
+    "eval_steps": 500,  # 评估步数 (减少加速)
+    "save_steps": 1000,  # 保存步数
     "save_total_limit": 1,  # 最多保存的checkpoint数量
 
     # 其他配置
