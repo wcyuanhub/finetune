@@ -284,6 +284,7 @@ def main():
         "num_labels": CONFIG["num_labels"],
         "id2label": CONFIG["id2label"],
         "label2id": CONFIG["label2id"],
+        "torch_dtype": torch.float16,  # 使用 FP16
     }
 
     if CONFIG["use_huggingface_hub"]:
@@ -300,6 +301,7 @@ def main():
             num_labels=CONFIG["num_labels"],
             id2label=CONFIG["id2label"],
             label2id=CONFIG["label2id"],
+            torch_dtype=torch.float16,  # 使用 FP16
         )
 
     # 设置 pad_token_id
@@ -357,6 +359,10 @@ def main():
     # ======================================================================
     print("[STEP 4/5] 配置训练参数...")
 
+    # 强制禁用 BF16，避免兼容性问题
+    os.environ["ACCELERATE_DOWNCAST_BF16"] = "false"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+
     training_args = TrainingArguments(
         output_dir=CONFIG["output_dir"],
         num_train_epochs=CONFIG["num_train_epochs"],
@@ -376,8 +382,8 @@ def main():
         load_best_model_at_end=CONFIG["load_best_model_at_end"],
         metric_for_best_model=CONFIG["metric_for_best_model"],
         greater_is_better=CONFIG["greater_is_better"],
-        fp16=CONFIG["fp16"],  # 使用配置值
-        bf16=CONFIG["bf16"],
+        fp16=True,  # 启用 FP16
+        bf16=False,  # 强制禁用 BF16
         gradient_checkpointing=CONFIG["gradient_checkpointing"],
         seed=CONFIG["seed"],
         report_to=CONFIG["report_to"],
