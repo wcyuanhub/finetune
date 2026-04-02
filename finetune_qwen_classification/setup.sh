@@ -9,17 +9,22 @@ echo "========================================"
 
 # 安装依赖
 echo ""
-echo "[1/3] 安装依赖..."
-pip install torch transformers peft modelscope ms-swift pandas tqdm -q
+echo "[1/4] 修复依赖版本兼容性..."
+# 先升级 transformers 到兼容版本
+pip install transformers>=4.40.0 --upgrade -q
+# 再安装兼容版本的 peft
+pip install peft>=0.10.0 --upgrade -q
 
-# 下载数据
 echo ""
-echo "[2/3] 下载数据..."
+echo "[2/4] 安装核心依赖..."
+pip install torch modelscope ms-swift pandas tqdm -q
+
+echo ""
+echo "[3/4] 下载数据..."
 python download_data.py
 
-# 预处理数据
 echo ""
-echo "[3/3] 预处理数据..."
+echo "[4/4] 预处理数据..."
 python preprocess_data.py
 
 echo ""
