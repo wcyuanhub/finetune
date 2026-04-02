@@ -53,15 +53,15 @@ CONFIG = {
     "per_device_train_batch_size": 8,     # 增大 batch
     "per_device_eval_batch_size": 8,
     "gradient_accumulation_steps": 1,     # 关闭累积
-    "learning_rate": 2e-4,
-    "warmup_ratio": 0.1,  # 预热比例
-    "weight_decay": 0.01,
-    "lr_scheduler_type": "cosine",  # 学习率调度器: linear, cosine, constant
+    "learning_rate": 1e-4,                # 降低学习率（防过拟合）
+    "warmup_ratio": 0.15,                # 增加预热（防过拟合）
+    "weight_decay": 0.05,                # 增强权重衰减（防过拟合）
+    "lr_scheduler_type": "cosine",       # 学习率调度器
 
     # LoRA 配置
-    "lora_r": 16,  # LoRA 秩
-    "lora_alpha": 32,  # LoRA alpha 参数
-    "lora_dropout": 0.05,  # LoRA dropout
+    "lora_r": 8,                         # 减小 LoRA 秩（防过拟合）
+    "lora_alpha": 16,                     # 同比例减小
+    "lora_dropout": 0.1,                  # 增大 dropout（防过拟合）
     "lora_target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],  # LoRA 目标模块
 
     # 输出配置
