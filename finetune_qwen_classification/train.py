@@ -284,10 +284,8 @@ def main():
         "num_labels": CONFIG["num_labels"],
         "id2label": CONFIG["id2label"],
         "label2id": CONFIG["label2id"],
+        "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
     }
-
-    if torch.cuda.is_available():
-        model_kwargs["torch_dtype"] = torch.float16
 
     if CONFIG["use_huggingface_hub"]:
         base_model = AutoModelForSequenceClassification.from_pretrained(
@@ -303,6 +301,7 @@ def main():
             num_labels=CONFIG["num_labels"],
             id2label=CONFIG["id2label"],
             label2id=CONFIG["label2id"],
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         )
 
     # 设置 pad_token_id
@@ -360,6 +359,9 @@ def main():
     # ======================================================================
     print("[STEP 4/5] 配置训练参数...")
 
+    # 强制使用 FP16，禁用 BF16（避免兼容性问题）
+    os.environ["ACCELERATE_DOWNCAST_BF16"] = "false"
+
     training_args = TrainingArguments(
         output_dir=CONFIG["output_dir"],
         num_train_epochs=CONFIG["num_train_epochs"],
@@ -379,8 +381,8 @@ def main():
         load_best_model_at_end=CONFIG["load_best_model_at_end"],
         metric_for_best_model=CONFIG["metric_for_best_model"],
         greater_is_better=CONFIG["greater_is_better"],
-        fp16=CONFIG["fp16"] and not CONFIG["bf16"],
-        bf16=CONFIG["bf16"],
+        fp16=True,  # 强制使用 FP16
+        bf16=False,  # 禁用 BF16
         gradient_checkpointing=CONFIG["gradient_checkpointing"],
         seed=CONFIG["seed"],
         report_to=CONFIG["report_to"],
