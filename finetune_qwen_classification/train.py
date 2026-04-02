@@ -382,7 +382,6 @@ def main():
         fp16=CONFIG["fp16"] and not CONFIG["bf16"],
         bf16=CONFIG["bf16"],
         gradient_checkpointing=CONFIG["gradient_checkpointing"],
-        group_by_length=CONFIG["group_by_length"],
         seed=CONFIG["seed"],
         report_to=CONFIG["report_to"],
         remove_unused_columns=CONFIG["remove_unused_columns"],
