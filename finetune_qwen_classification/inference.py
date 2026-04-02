@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
 """
-Qwen2.5-1.5B 电商评论分类推理脚本
-用于测试训练好的模型
+电商评论分类器 - 交互式推理
 """
 
 import os
-import sys
-import argparse
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from peft import PeftModel, PeftConfig
+from peft import PeftModel
 
 
-# 默认配置
-DEFAULT_MODEL_PATH = "./output/final_model"
-DEFAULT_PROMPT_TEMPLATE = """判断以下电商评论的情感是正面、中性还是负面：
-
-评论：{text}
-情感："""
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def load_model(model_path: str, use_lora: bool = True):
+def load_model():
     """加载模型"""
-    print(f"[INFO] 加载模型: {model_path}")
+    model_path = "./output/final_model"
 
-    # 加载 tokenizer
+    if not os.path.exists(model_path):
+        print("错误: 模型不存在！请先运行 python train.py")
+        return None, None
+
+    print("正在加载模型...")
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_path,
         trust_remote_code=True,
@@ -37,20 +35,15 @@ def load_model(model_path: str, use_lora: bool = True):
     # 检查是否是 LoRA 模型
     peft_config_path = os.path.join(model_path, "adapter_config.json")
 
-    if use_lora and os.path.exists(peft_config_path):
-        print("[INFO] 检测到 LoRA 模型")
-        # 加载基础模型
+    if os.path.exists(peft_config_path):
         base_model = AutoModelForSequenceClassification.from_pretrained(
             model_path,
             trust_remote_code=True,
             local_files_only=True,
             num_labels=3,
         )
-        # 加载 LoRA 权重
         model = PeftModel.from_pretrained(base_model, model_path)
-        print("[INFO] LoRA 模型加载成功")
     else:
-        print("[INFO] 加载完整模型")
         model = AutoModelForSequenceClassification.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -61,15 +54,14 @@ def load_model(model_path: str, use_lora: bool = True):
     if torch.cuda.is_available():
         model = model.cuda()
 
+    print("模型加载完成！\n")
     return model, tokenizer
 
 
-def predict(text: str, model, tokenizer, id2label=None):
-    """预测单条文本"""
-    if id2label is None:
-        id2label = {0: "负面", 1: "中性", 2: "正面"}
+def predict(text: str, model, tokenizer):
+    """预测文本"""
+    id2label = {0: "负面", 1: "中性", 2: "正面"}
 
-    # Tokenize
     inputs = tokenizer(
         text,
         return_tensors="pt",
@@ -78,11 +70,9 @@ def predict(text: str, model, tokenizer, id2label=None):
         max_length=256,
     )
 
-    # Move to GPU if available
     if torch.cuda.is_available():
         inputs = {k: v.cuda() for k, v in inputs.items()}
 
-    # Predict
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs.logits
@@ -90,114 +80,110 @@ def predict(text: str, model, tokenizer, id2label=None):
         pred_id = torch.argmax(logits, dim=-1).item()
         confidence = probs[0][pred_id].item()
 
-    # Get result
-    label = id2label.get(pred_id, "未知")
-    all_probs = {id2label[i]: f"{probs[0][i].item():.4f}" for i in range(3)}
-
-    return {
-        "label": label,
-        "confidence": confidence,
-        "probabilities": all_probs,
-    }
+    label = id2label[pred_id]
+    return label, confidence
 
 
-def interactive_predict(model, tokenizer):
-    """交互式预测"""
-    print("\n" + "=" * 50)
-    print("交互式评论分类")
-    print("输入 'quit' 或 'exit' 退出")
-    print("=" * 50 + "\n")
+def show_menu():
+    """显示菜单"""
+    print("=" * 50)
+    print("       电商评论分类器")
+    print("=" * 50)
+    print()
+    print("  1. 测试样例")
+    print("  2. 手动输入评论")
+    print("  3. 退出")
+    print()
+
+
+def run_examples(model, tokenizer):
+    """运行测试样例"""
+    examples = [
+        ("这个商品质量很好，物流也很快，非常满意！", "预期: 正面"),
+        ("东西不错，性价比很高，值得购买。", "预期: 正面"),
+        ("一般般，没有描述的那么好。", "预期: 中性"),
+        ("还行吧，中规中矩。", "预期: 中性"),
+        ("太差了，质量很差，完全不值这个价。", "预期: 负面"),
+        ("物流太慢了，等了好久。", "预期: 负面"),
+        ("客服态度恶劣，产品有损坏，不推荐。", "预期: 负面"),
+    ]
+
+    print()
+    print("=" * 50)
+    print("       测试样例")
+    print("=" * 50)
+    print()
+
+    for i, (text, expected) in enumerate(examples, 1):
+        label, confidence = predict(text, model, tokenizer)
+        status = "正确" if expected.startswith(label) else "错误"
+        print(f"[{i}] {label} (置信度: {confidence:.2%}) {status}")
+        print(f"    {text}")
+        print(f"    {expected}")
+        print()
+
+
+def manual_input(model, tokenizer):
+    """手动输入评论"""
+    print()
+    print("=" * 50)
+    print("       手动输入评论")
+    print("=" * 50)
+    print()
+    print("输入评论后按回车预测，输入 'q' 返回菜单")
+    print()
 
     while True:
-        try:
-            text = input("请输入评论: ").strip()
+        text = input("请输入评论: ").strip()
 
-            if text.lower() in ['quit', 'exit', 'q']:
-                print("再见!")
-                break
-
-            if not text:
-                print("请输入有效内容\n")
-                continue
-
-            result = predict(text, model, tokenizer)
-
-            print(f"\n预测结果: {result['label']}")
-            print(f"置信度: {result['confidence']:.4f}")
-            print(f"各类别概率: {result['probabilities']}")
-            print()
-
-        except KeyboardInterrupt:
-            print("\n\n再见!")
+        if text.lower() == 'q':
             break
-        except Exception as e:
-            print(f"错误: {e}\n")
 
+        if not text:
+            continue
 
-def batch_predict(texts: list, model, tokenizer):
-    """批量预测"""
-    print(f"[INFO] 批量预测 {len(texts)} 条文本...\n")
+        label, confidence = predict(text, model, tokenizer)
 
-    for i, text in enumerate(texts):
-        result = predict(text, model, tokenizer)
-        print(f"[{i+1}] {result['label']} (置信度: {result['confidence']:.4f})")
-        print(f"    原文: {text[:50]}...")
+        print()
+        print("-" * 30)
+        print(f"预测结果: {label}")
+        print(f"置信度: {confidence:.2%}")
+        print("-" * 30)
         print()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="电商评论分类推理")
-    parser.add_argument("--model_path", type=str, default=DEFAULT_MODEL_PATH,
-                        help="模型路径")
-    parser.add_argument("--text", type=str, default=None,
-                        help="要预测的文本")
-    parser.add_argument("--interactive", action="store_true",
-                        help="交互式预测模式")
-    parser.add_argument("--no_lora", action="store_true",
-                        help="不使用 LoRA (完整模型)")
-    parser.add_argument("--test", action="store_true",
-                        help="运行测试样例")
+    clear_screen()
+    print("正在初始化...")
 
-    args = parser.parse_args()
-
-    # 检查模型路径
-    if not os.path.exists(args.model_path):
-        print(f"[ERROR] 模型路径不存在: {args.model_path}")
-        print("请先运行训练: python train.py")
-        sys.exit(1)
-
-    # 加载模型
-    model, tokenizer = load_model(args.model_path, use_lora=not args.no_lora)
-
-    # 测试样例
-    if args.test:
-        test_texts = [
-            "这个商品质量很好，物流也很快，非常满意！",
-            "一般般，没有描述的那么好。",
-            "太差了，质量很差，完全不值这个价。",
-        ]
-        batch_predict(test_texts, model, tokenizer)
+    result = load_model()
+    if result[0] is None:
         return
 
-    # 单条预测
-    if args.text:
-        result = predict(args.text, model, tokenizer)
-        print(f"\n预测结果: {result['label']}")
-        print(f"置信度: {result['confidence']:.4f}")
-        print(f"各类别概率: {result['probabilities']}")
-        return
+    model, tokenizer = result
 
-    # 交互式模式
-    if args.interactive or sys.stdin.isatty():
-        interactive_predict(model, tokenizer)
-    else:
-        # 批量测试
-        test_texts = [
-            "这个商品质量很好，物流也很快，非常满意！",
-            "一般般，没有描述的那么好。",
-            "太差了，质量很差，完全不值这个价。",
-        ]
-        batch_predict(test_texts, model, tokenizer)
+    while True:
+        clear_screen()
+        show_menu()
+
+        choice = input("请选择 (1-3): ").strip()
+
+        if choice == '1':
+            clear_screen()
+            run_examples(model, tokenizer)
+            input("\n按回车返回菜单...")
+
+        elif choice == '2':
+            clear_screen()
+            manual_input(model, tokenizer)
+
+        elif choice == '3':
+            print("\n再见！")
+            break
+
+        else:
+            print("\n无效选择，请重新输入...")
+            input()
 
 
 if __name__ == "__main__":
